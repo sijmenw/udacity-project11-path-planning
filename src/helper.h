@@ -5,7 +5,7 @@ int calculateLane(double car_d) {
      *
      * returns -1 when not in a lane
      */
-
+    std::cout << "car_d: " << car_d << " ";
     // 2 is center of left lane, 6 is center of mid lane, 10 is center of right lane
     if (car_d > 1 && car_d < 3) {
         return 0;
@@ -22,7 +22,7 @@ int calculateLane(double car_d) {
 double calculateCost(double car_x, double car_y, double car_theta, vector<double> path_x, vector<double> path_y,
                      vector<vector<double>> other_vehicles) {
     double cost = -1;
-
+    cost += rand() % 100;
     // punish strong steering
 
     // TODO: punish driving near other vehicles

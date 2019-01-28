@@ -175,7 +175,7 @@ vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car
 
 	for(int i = 0; i < 50; i++) {
 		double next_s = car_s + (i+1) * dist_inc;
-		double next_d = 4 * (targetLane - 1) + 2;
+		double next_d = 4 * targetLane + 2;
 		vector<double> xy = getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
 
 		next_x_vals.push_back(xy[0]);
@@ -282,20 +282,31 @@ int main() {
 			vector<vector<double>> trajectories_next_x_vals;
 			vector<vector<double>> trajectories_next_y_vals;
 
+			// vector that hold the target lanes for the generated trajectories
+			vector<int> targetLanes;
+
 			// optimal trajectory tracking
 			double minCost = 999999999;
 			double minIdx;
 
 			// if target lane is not current lane, only append to previous path
 			if (lane != targetLane) {
-
+				std::cout << "Moving to a different lane..." << std::endl;
+                // TODO increase path size to match 50
+                trajectories_next_x_vals.push_back(previous_path_x);
+                trajectories_next_y_vals.push_back(previous_path_y);
+				minIdx = 0;
+				targetLanes.push_back(targetLane);
 			} else {
+				std::cout << "generating trajectories..." << std::endl;
 				// generate up to 3 paths and compare costs: Left, Keep lane, Right
 				vector<vector<double>> klTrajec = getTrajectory(lane, dist_inc, car_s, map_waypoints_x,
 																map_waypoints_y, map_waypoints_s);
 				// append to trajectories
 				trajectories_next_x_vals.push_back(klTrajec[0]);
 				trajectories_next_y_vals.push_back(klTrajec[1]);
+
+				targetLanes.push_back(lane);
 
 
 				if (lane > 0) { // go left if possible
@@ -304,14 +315,18 @@ int main() {
 					// append to trajectories
 					trajectories_next_x_vals.push_back(lTrajec[0]);
 					trajectories_next_y_vals.push_back(lTrajec[1]);
+
+					targetLanes.push_back(lane - 1);
 				}
 
 				if (lane < 2) { // go right if possible
-					vector<vector<double>> rTrajec = getTrajectory(lane - 1, dist_inc, car_s, map_waypoints_x,
+					vector<vector<double>> rTrajec = getTrajectory(lane + 1, dist_inc, car_s, map_waypoints_x,
 																   map_waypoints_y, map_waypoints_s);
 					// append to trajectories
 					trajectories_next_x_vals.push_back(rTrajec[0]);
 					trajectories_next_y_vals.push_back(rTrajec[1]);
+
+					targetLanes.push_back(lane + 1);
 				}
 
 				// calculate costs
@@ -323,8 +338,9 @@ int main() {
 					costs.push_back(cost);
 				}
 
+				std::cout << "Costs: ";
 				for (int i = 0; i < costs.size(); ++i) {
-					std::cout << "Cost: " << costs[i] << std::endl;
+					std::cout << costs[i] << ", ";
 
 					if (costs[i] < minCost) {
 						minCost = costs[i];
@@ -332,9 +348,12 @@ int main() {
 					}
 				}
 
-				std::cout << "Min cost: " << minCost << " at: " << minIdx << std::endl;
+				std::cout << std::endl << "Min cost: " << minCost << " at: " << minIdx << std::endl;
 
 			}
+
+			// set target lane to targetLane of picked trajectory
+			targetLane = targetLanes[minIdx];
 
 			// basic stay in lane and drive code
 //			for(int i = 0; i < 50; i++)
@@ -347,14 +366,16 @@ int main() {
 //				next_y_vals.push_back(xy[1]);
 //			}
 
+            std::cout << "Sending: lane: " << lane << ", target lane: " << targetLane
+					  << ", path length: " << trajectories_next_x_vals[minIdx].size() << "...";
           	msgJson["next_x"] = trajectories_next_x_vals[minIdx];
           	msgJson["next_y"] = trajectories_next_y_vals[minIdx];
-
+            std::cout << "Message sent!" << std::endl;
           	auto msg = "42[\"control\","+ msgJson.dump()+"]";
 
           	//this_thread::sleep_for(chrono::milliseconds(1000));
           	ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
-          
+
         }
       } else {
         // Manual driving
