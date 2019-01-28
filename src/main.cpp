@@ -165,14 +165,76 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s, const vec
 
 }
 
-vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car_s, vector<double> map_waypoints_x,
-									 vector<double> map_waypoints_y, vector<double> map_waypoints_s) {
+vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car_s, double start_theta,
+									 double car_x, double car_y,
+									 vector<double> map_waypoints_x,
+									 vector<double> map_waypoints_y,
+									 vector<double> map_waypoints_s) {
+	// build point vectors for spline
+	// points are:
+	//   starting point in past using car heading
+	//   starting point
+	//   halfway point
+	//   end point
+	//   end point in future
+	vector<double> points_x;
+	vector<double> points_y;
+
+	// point in past using heading
+	double x0 = car_x - cos(start_theta) * 10 * dist_inc;
+	double y0 = car_y - sin(start_theta) * 10 * dist_inc;
+	points_x.push_back(x0);
+	points_y.push_back(y0);
+
+	// starting point
+	points_x.push_back(car_x);
+	points_y.push_back(car_y);
+
+	// halfway and endpoint
+	double end_s = car_s + 50 * dist_inc;  // TODO make trajectory length variable?
+	double end_d = 4 * targetLane + 2;
+	vector<double> end_point = getXY(end_s, end_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+
+	// halfway
+	points_x.push_back((car_x + end_point[0]) / 2);
+	points_y.push_back((car_y + end_point[1]) / 2);
+
+	// push end point
+	points_x.push_back(end_point[0]);
+	points_y.push_back(end_point[1]);
+
+	// future end point
+	double heading_s = end_s + 10 * dist_inc;  // TODO make heading length variable?
+	vector<double> hr = getXY(heading_s, end_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);  // heading reference
+	points_x.push_back(hr[0]);
+	points_y.push_back(hr[1]);
+
+	// set target values
+	double target_x = end_point[0];
+	double target_y = end_point[1];
+
+	// theta is zero at east, goes up rotating counter clockwise
+	double target_theta = atan2(hr[1] - target_y, hr[0] - target_x);
+
+	std::cout << "Points:" << std::endl;
+	for (int i = 0; i < points_x.size(); ++i) {
+		std::cout << "(" << points_x[i] << "," << points_y[i] << "), ";
+	}
+	std::cout << std::endl;
+
+	std::cout << "Starting theta: " << start_theta << ", target theta: " << target_theta << std::endl;
+
+	// TODO build spline or whatever
 
 	vector<vector<double>> result;
 
 	vector<double> next_x_vals;
 	vector<double> next_y_vals;
 
+	// TODO extract values from spline and add them to next_x and next_y
+
+
+	// TODO remove this when other part works, only in place to keep the car driving
 	for(int i = 0; i < 50; i++) {
 		double next_s = car_s + (i+1) * dist_inc;
 		double next_d = 4 * targetLane + 2;
@@ -230,7 +292,7 @@ int main() {
   int targetLane = 1;
 
   // target velocity
-  double ref_vel = 49.5;  // mph
+  double ref_vel = 49.5;  // mph  TODO use this
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy,&lane,&targetLane](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
@@ -256,7 +318,7 @@ int main() {
           	double car_y = j[1]["y"];
           	double car_s = j[1]["s"];
           	double car_d = j[1]["d"];
-          	double car_yaw = j[1]["yaw"];
+          	double car_yaw_deg = j[1]["yaw"];  // in degrees
           	double car_speed = j[1]["speed"];
 
           	// Previous path data given to the Planner
@@ -274,7 +336,7 @@ int main() {
           	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
 			// speed limit is 50mph == 22.352 m/s
 			double dist_inc = 0.4;  // times 50 is m/s
-
+			double car_yaw = car_yaw_deg * M_PI / 180; // convert to rad
 
 			lane = calculateLane(car_d);
 
@@ -300,7 +362,8 @@ int main() {
 			} else {
 				std::cout << "generating trajectories..." << std::endl;
 				// generate up to 3 paths and compare costs: Left, Keep lane, Right
-				vector<vector<double>> klTrajec = getTrajectory(lane, dist_inc, car_s, map_waypoints_x,
+				vector<vector<double>> klTrajec = getTrajectory(lane, dist_inc, car_s, car_yaw, car_x, car_y,
+																map_waypoints_x,
 																map_waypoints_y, map_waypoints_s);
 				// append to trajectories
 				trajectories_next_x_vals.push_back(klTrajec[0]);
@@ -310,7 +373,8 @@ int main() {
 
 
 				if (lane > 0) { // go left if possible
-					vector<vector<double>> lTrajec = getTrajectory(lane - 1, dist_inc, car_s, map_waypoints_x,
+					vector<vector<double>> lTrajec = getTrajectory(lane - 1, dist_inc, car_s, car_yaw, car_x, car_y,
+																   map_waypoints_x,
 																   map_waypoints_y, map_waypoints_s);
 					// append to trajectories
 					trajectories_next_x_vals.push_back(lTrajec[0]);
@@ -320,7 +384,8 @@ int main() {
 				}
 
 				if (lane < 2) { // go right if possible
-					vector<vector<double>> rTrajec = getTrajectory(lane + 1, dist_inc, car_s, map_waypoints_x,
+					vector<vector<double>> rTrajec = getTrajectory(lane + 1, dist_inc, car_s, car_yaw, car_x, car_y,
+																   map_waypoints_x,
 																   map_waypoints_y, map_waypoints_s);
 					// append to trajectories
 					trajectories_next_x_vals.push_back(rTrajec[0]);

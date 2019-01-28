@@ -22,7 +22,7 @@ int calculateLane(double car_d) {
 double calculateCost(double car_x, double car_y, double car_theta, vector<double> path_x, vector<double> path_y,
                      vector<vector<double>> other_vehicles) {
     double cost = -1;
-    cost += rand() % 100;
+//    cost += rand() % 100;
     // punish strong steering
 
     // TODO: punish driving near other vehicles
