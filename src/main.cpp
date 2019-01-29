@@ -165,6 +165,82 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s, const vec
 
 }
 
+vector<double> carCoordinate(double carX, double carY, double carTheta,
+							 double worldX, double worldY) {
+	vector<double> result(2);
+	double d = distance(carX, carY, worldX, worldY);
+	double dTheta = atan2(worldY - carY, worldX - carX) - carTheta;
+
+	result[0] = d * cos(dTheta);
+	result[1] = d * sin(dTheta);
+
+	return result;
+}
+
+vector<vector<double>> splineTrajectoryFromPoints(double car_theta, vector<double> worldX, vector<double> worldY) {
+	vector<vector<double>> result(2);
+
+	// transform XY points to car coordinates
+	// worldX[1],worldY[1] are car X,Y
+	vector<double> X(5);
+	vector<double> Y(5);
+
+	for (int i = 0; i < worldX.size(); ++i) {
+		// world to car coordinate
+		vector<double> rel = carCoordinate(worldX[1], worldY[1], car_theta,
+										   worldX[i], worldY[i]);
+		X[i] = rel[0];
+		Y[i] = rel[1];
+	}
+
+	// FIXME PRINTING FUNCTION
+	std::cout << "Car points:" << std::endl;
+	for (int i = 0; i < X.size(); ++i) {
+		std::cout << "(" << X[i] << "," << Y[i] << "), ";
+	}
+	std::cout << std::endl;
+
+	tk::spline s;
+	s.set_points(X, Y);
+
+	// linear approximation
+	vector<double> car_points_x;
+	vector<double> car_points_y;
+
+	double startX = X[1];
+	double startY = Y[1];
+	double incX = (X[3] - startX) / 50;  // TODO trajec length variable
+	std::cout << "Spline points:" << std::endl;
+	for (int i = 0; i < 50; ++i) {  // TODO trajec length variable
+		double tmpX = startX + (i + 1) * incX;  // + 1 so first point is after the car, not in the car
+		double tmpY = s(tmpX);
+		car_points_x.push_back(tmpX);
+		car_points_y.push_back(startY + tmpY);
+		std::cout << "(" << tmpX << "," << startY + tmpY << ") ";
+	}
+	std::cout << std::endl;
+
+	// convert car points to world points
+	// using carCoordinate function, where car is now world origin in car coordinate system
+	vector<double> world_points_x;
+	vector<double> world_points_y;
+	vector<double> worldOriginFromCar = carCoordinate(worldX[1], worldY[1], car_theta, 0, 0);
+	std::cout << "World path points:" << std::endl;
+	for (int i = 0; i < car_points_x.size(); ++i) {
+		vector<double> tmp = carCoordinate(worldOriginFromCar[0], worldOriginFromCar[1], -car_theta,
+										   car_points_x[i], car_points_y[i]);
+		world_points_x.push_back(tmp[0]);
+		world_points_y.push_back(tmp[1]);
+		std::cout << "(" << tmp[0] << "," << tmp[1] << ") ";
+	}
+	std::cout << std::endl;
+
+	// return path
+	result[0] = world_points_x;
+	result[1] = world_points_y;
+	return result;
+}
+
 vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car_s, double start_theta,
 									 double car_x, double car_y,
 									 vector<double> map_waypoints_x,
@@ -216,6 +292,7 @@ vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car
 	// theta is zero at east, goes up rotating counter clockwise
 	double target_theta = atan2(hr[1] - target_y, hr[0] - target_x);
 
+	// FIXME PRINTING FUNCTION
 	std::cout << "Points:" << std::endl;
 	for (int i = 0; i < points_x.size(); ++i) {
 		std::cout << "(" << points_x[i] << "," << points_y[i] << "), ";
@@ -224,28 +301,7 @@ vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car
 
 	std::cout << "Starting theta: " << start_theta << ", target theta: " << target_theta << std::endl;
 
-	// TODO build spline or whatever
-
-	vector<vector<double>> result;
-
-	vector<double> next_x_vals;
-	vector<double> next_y_vals;
-
-	// TODO extract values from spline and add them to next_x and next_y
-
-
-	// TODO remove this when other part works, only in place to keep the car driving
-	for(int i = 0; i < 50; i++) {
-		double next_s = car_s + (i+1) * dist_inc;
-		double next_d = 4 * targetLane + 2;
-		vector<double> xy = getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-
-		next_x_vals.push_back(xy[0]);
-		next_y_vals.push_back(xy[1]);
-	}
-
-	result.push_back(next_x_vals);
-	result.push_back(next_y_vals);
+	vector<vector<double>> result = splineTrajectoryFromPoints(start_theta, points_x, points_y);
 
 	return result;
 }
@@ -333,7 +389,6 @@ int main() {
 
           	json msgJson;
 
-          	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
 			// speed limit is 50mph == 22.352 m/s
 			double dist_inc = 0.4;  // times 50 is m/s
 			double car_yaw = car_yaw_deg * M_PI / 180; // convert to rad
@@ -370,7 +425,6 @@ int main() {
 				trajectories_next_y_vals.push_back(klTrajec[1]);
 
 				targetLanes.push_back(lane);
-
 
 				if (lane > 0) { // go left if possible
 					vector<vector<double>> lTrajec = getTrajectory(lane - 1, dist_inc, car_s, car_yaw, car_x, car_y,
