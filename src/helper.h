@@ -1,5 +1,9 @@
 using namespace std;
 
+double mph2mstep(double mph_speed) {
+    return mph_speed * 0.44704 * 0.02;  // mp/h to m/s to m/step
+}
+
 double distance(double x1, double y1, double x2, double y2) {
     return sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
 }

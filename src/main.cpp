@@ -238,10 +238,13 @@ vector<vector<double>> splineTrajectoryFromPoints(double car_theta, vector<doubl
 }
 
 vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car_s, double start_theta,
-									 double car_x, double car_y,
+									 double car_x, double car_y, double car_speed,
 									 vector<double> map_waypoints_x,
 									 vector<double> map_waypoints_y,
 									 vector<double> map_waypoints_s) {
+	std::cout << "Current car speed: " << car_speed << std::endl;
+	//
+
 	// build point vectors for spline
 	// points are:
 	//   starting point in past using car heading
@@ -344,9 +347,12 @@ int main() {
   int targetLane = 1;
 
   // target velocity
-  double ref_vel = 49.5;  // mph  TODO use this
+  // speed limit is 50mph
+  double ref_vel = 49.5;  // mph
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy,&lane,&targetLane](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy,
+					  &lane,&targetLane,&ref_vel]
+					  (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -385,9 +391,8 @@ int main() {
 
           	json msgJson;
 
-			// speed limit is 50mph == 22.352 m/s
-			double dist_inc = 0.4;  // times 50 is m/s
-			double car_yaw = car_yaw_deg * M_PI / 180; // convert to rad
+			double dist_inc = mph2mstep(ref_vel);
+			double car_yaw = deg2rad(car_yaw_deg);
 
 			lane = calculateLane(car_d);
 
@@ -402,19 +407,26 @@ int main() {
 			double minCost = 999999999;
 			double minIdx;
 
-			// if target lane is not current lane, only append to previous path
+			// if target lane is not current lane, only use previous path
 			if (lane != targetLane) {
 				std::cout << "Moving to a different lane..." << std::endl;
-                // TODO increase path size to match 50
                 trajectories_next_x_vals.push_back(previous_path_x);
                 trajectories_next_y_vals.push_back(previous_path_y);
+				minIdx = 0;
+				targetLanes.push_back(targetLane);
+			// if path already lengthy enough, only use previous path
+			} else if (previous_path_x.size() >= 20) {
+				std::cout << "Path size over minimum (" << previous_path_x.size() << "), waiting..." << std::endl;
+				trajectories_next_x_vals.push_back(previous_path_x);
+				trajectories_next_y_vals.push_back(previous_path_y);
 				minIdx = 0;
 				targetLanes.push_back(targetLane);
 			} else {
 				std::cout << "generating trajectories..." << std::endl;
 				// generate up to 3 paths and compare costs: Left, Keep lane, Right
 				std::cout << "Keep lane trajectory..." << std::endl;
-				vector<vector<double>> klTrajec = getTrajectory(lane, dist_inc, car_s, car_yaw, car_x, car_y,
+				vector<vector<double>> klTrajec = getTrajectory(lane, dist_inc,
+																car_s, car_yaw, car_x, car_y, car_speed,
 																map_waypoints_x,
 																map_waypoints_y, map_waypoints_s);
 				// append to trajectories
@@ -425,7 +437,8 @@ int main() {
 
 				if (lane > 0) { // go left if possible
 					std::cout << "Go left trajectory..." << std::endl;
-					vector<vector<double>> lTrajec = getTrajectory(lane - 1, dist_inc, car_s, car_yaw, car_x, car_y,
+					vector<vector<double>> lTrajec = getTrajectory(lane - 1, dist_inc,
+																   car_s, car_yaw, car_x, car_y, car_speed,
 																   map_waypoints_x,
 																   map_waypoints_y, map_waypoints_s);
 					// append to trajectories
@@ -437,7 +450,8 @@ int main() {
 
 				if (lane < 2) { // go right if possible
 					std::cout << "Go right trajectory..." << std::endl;
-					vector<vector<double>> rTrajec = getTrajectory(lane + 1, dist_inc, car_s, car_yaw, car_x, car_y,
+					vector<vector<double>> rTrajec = getTrajectory(lane + 1, dist_inc,
+																   car_s, car_yaw, car_x, car_y, car_speed,
 																   map_waypoints_x,
 																   map_waypoints_y, map_waypoints_s);
 					// append to trajectories
