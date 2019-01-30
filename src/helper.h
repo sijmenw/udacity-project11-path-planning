@@ -22,7 +22,6 @@ int calculateLane(double car_d) {
     } else if (car_d > 9 && car_d < 11) {
         return 2;
     } else {
-        std::cout << "Warning, not in lane!" << std::endl;
         return -1;
     }
 }
@@ -56,9 +55,7 @@ double calculateCost(int targetLane, double car_s, double car_d, double car_x, d
     double slowCost = 100 - distance(car_x, car_y, path_x.back(), path_y.back());
 
     // punish lane switching
-    double laneSwitchCost = targetLane == calculateLane(car_d) ? 0.0 : 5.0;
-
-    std::cout << closeCost << "+" << slowCost << "+" << laneSwitchCost << " ";
+    double laneSwitchCost = targetLane == calculateLane(car_d) ? 0.0 : 4.0;
 
     return closeCost + slowCost + laneSwitchCost;
 }
