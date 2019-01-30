@@ -36,10 +36,6 @@ string hasData(string s) {
   return "";
 }
 
-double distance(double x1, double y1, double x2, double y2)
-{
-	return sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
-}
 int ClosestWaypoint(double x, double y, const vector<double> &maps_x, const vector<double> &maps_y)
 {
 
@@ -417,6 +413,7 @@ int main() {
 			} else {
 				std::cout << "generating trajectories..." << std::endl;
 				// generate up to 3 paths and compare costs: Left, Keep lane, Right
+				std::cout << "Keep lane trajectory..." << std::endl;
 				vector<vector<double>> klTrajec = getTrajectory(lane, dist_inc, car_s, car_yaw, car_x, car_y,
 																map_waypoints_x,
 																map_waypoints_y, map_waypoints_s);
@@ -427,6 +424,7 @@ int main() {
 				targetLanes.push_back(lane);
 
 				if (lane > 0) { // go left if possible
+					std::cout << "Go left trajectory..." << std::endl;
 					vector<vector<double>> lTrajec = getTrajectory(lane - 1, dist_inc, car_s, car_yaw, car_x, car_y,
 																   map_waypoints_x,
 																   map_waypoints_y, map_waypoints_s);
@@ -438,6 +436,7 @@ int main() {
 				}
 
 				if (lane < 2) { // go right if possible
+					std::cout << "Go right trajectory..." << std::endl;
 					vector<vector<double>> rTrajec = getTrajectory(lane + 1, dist_inc, car_s, car_yaw, car_x, car_y,
 																   map_waypoints_x,
 																   map_waypoints_y, map_waypoints_s);
@@ -452,7 +451,7 @@ int main() {
 				vector<double> costs;
 
 				for (int i = 0; i < trajectories_next_x_vals.size(); ++i) {
-					double cost = calculateCost(car_x, car_y, car_yaw, trajectories_next_x_vals[i],
+					double cost = calculateCost(car_d, car_s, car_x, car_y, car_yaw, trajectories_next_x_vals[i],
 												trajectories_next_y_vals[i], sensor_fusion);
 					costs.push_back(cost);
 				}
@@ -473,17 +472,6 @@ int main() {
 
 			// set target lane to targetLane of picked trajectory
 			targetLane = targetLanes[minIdx];
-
-			// basic stay in lane and drive code
-//			for(int i = 0; i < 50; i++)
-//			{
-//				double next_s = car_s + (i+1) * dist_inc;
-//				double next_d = 6;
-//				vector<double> xy = getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-//
-//				next_x_vals.push_back(xy[0]);
-//				next_y_vals.push_back(xy[1]);
-//			}
 
             std::cout << "Sending: lane: " << lane << ", target lane: " << targetLane
 					  << ", path length: " << trajectories_next_x_vals[minIdx].size() << "...";
