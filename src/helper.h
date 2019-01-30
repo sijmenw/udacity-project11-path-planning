@@ -22,35 +22,43 @@ int calculateLane(double car_d) {
     } else if (car_d > 9 && car_d < 11) {
         return 2;
     } else {
-        std::cout << "Warning, not in lane!";
+        std::cout << "Warning, not in lane!" << std::endl;
         return -1;
     }
 }
 
-double calculateCost(double car_d, double car_s, double car_x, double car_y, double car_theta,
+double calculateCost(int targetLane, double car_s, double car_d, double car_x, double car_y, double car_theta,
                      vector<double> path_x, vector<double> path_y,
                      vector<vector<double>> other_vehicles) {
     // The data format for each car is: [ id, x, y, vx, vy, s, d]
 
-    double cost = -1;
+    double closeCost = 0.0;
     double closePenalty = 0.5;
     double veryClosePenalty = 5.0;
 
     // punish driving near other vehicles
     for (int i = 0; i < path_x.size(); ++i) {
         for (int vIdx = 0; vIdx < other_vehicles.size(); ++vIdx) {
-            if (calculateLane(car_d) == calculateLane(other_vehicles[vIdx][6])) {
-                double dist = distance(car_x, car_y, other_vehicles[vIdx][1], other_vehicles[vIdx][2]);
+            if (targetLane == calculateLane(other_vehicles[vIdx][6])) {
+                double dist = distance(path_x[i], path_y[i], other_vehicles[vIdx][1], other_vehicles[vIdx][2]);
                 if (dist < 10) {
                     if (dist < 3) {
-                        cost += veryClosePenalty;
+                        closeCost += veryClosePenalty;
                     } else {
-                        cost += closePenalty;
+                        closeCost += closePenalty;
                     }
                 }
             }
         }
     }
 
-    return cost;
+    // punish slow driving
+    double slowCost = 100 - distance(car_x, car_y, path_x.back(), path_y.back());
+
+    // punish lane switching
+    double laneSwitchCost = targetLane == calculateLane(car_d) ? 0.0 : 5.0;
+
+    std::cout << closeCost << "+" << slowCost << "+" << laneSwitchCost << " ";
+
+    return closeCost + slowCost + laneSwitchCost;
 }

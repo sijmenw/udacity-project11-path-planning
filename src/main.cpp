@@ -173,7 +173,8 @@ vector<double> carCoordinate(double carX, double carY, double carTheta,
 	return result;
 }
 
-vector<vector<double>> splineTrajectoryFromPoints(double car_theta, vector<double> worldX, vector<double> worldY) {
+vector<vector<double>> splineTrajectoryFromPoints(double car_theta, vector<double> worldX, vector<double> worldY,
+												  vector<double> dist_inc_steps) {
 	vector<vector<double>> result(2);
 
 	// transform XY points to car coordinates
@@ -199,16 +200,17 @@ vector<vector<double>> splineTrajectoryFromPoints(double car_theta, vector<doubl
 	tk::spline s;
 	s.set_points(X, Y);
 
-	// linear approximation
+	// linear approximation using dist_inc_steps as step sizes
 	vector<double> car_points_x;
 	vector<double> car_points_y;
 
 	double startX = X[1];
 	double startY = Y[1];
-	double incX = (X[3] - startX) / 50;  // TODO trajec length variable
+	double incX = 0;  // the increment, based on step sizes in dist_inc_steps
 	std::cout << "Spline points:" << std::endl;
 	for (int i = 0; i < 50; ++i) {  // TODO trajec length variable
-		double tmpX = startX + (i + 1) * incX;  // + 1 so first point is after the car, not in the car
+		incX += dist_inc_steps[i];
+		double tmpX = startX + incX;
 		double tmpY = s(tmpX);
 		car_points_x.push_back(tmpX);
 		car_points_y.push_back(startY + tmpY);
@@ -243,7 +245,20 @@ vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car
 									 vector<double> map_waypoints_y,
 									 vector<double> map_waypoints_s) {
 	std::cout << "Current car speed: " << car_speed << std::endl;
-	//
+	// calculate target dist_inc
+	// max acc = 10 m/s/s ~ 0.2 m/s/step ~ 0.004 m/step/step
+	double car_speed_step = mph2mstep(car_speed);
+	double max_speed_step = min(dist_inc, car_speed_step + 50 * 0.004);
+	std::cout << "car speed: " << car_speed_step << ", max calc speed: " << max_speed_step << std::endl;
+	vector<double> dist_inc_steps(50);
+	// linearly increase speed from car_speed to max speed
+	for (int i = 0; i < 50; ++i) {
+		// i + 1 so speed increases from first step
+		// times 0.02 because acceleration calculated per step
+		dist_inc_steps[i] = car_speed_step + (i+1) * (max_speed_step - car_speed_step) * 0.02;
+		std::cout << dist_inc_steps[i] << " ";
+	}
+	std::cout << std::endl;
 
 	// build point vectors for spline
 	// points are:
@@ -266,7 +281,10 @@ vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car
 	points_y.push_back(car_y);
 
 	// halfway and endpoint
-	double end_s = car_s + 50 * dist_inc;  // TODO make trajectory length variable?
+	double end_s = car_s;
+	for (int i = 0; i < 50; ++i) {
+		end_s += dist_inc_steps[i];  // TODO make trajectory length variable?
+	}
 	double end_d = 4 * targetLane + 2;
 	vector<double> end_point = getXY(end_s, end_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
 
@@ -279,7 +297,7 @@ vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car
 	points_y.push_back(end_point[1]);
 
 	// future end point
-	double heading_s = end_s + 10 * dist_inc;  // TODO make heading length variable?
+	double heading_s = end_s + 10 * dist_inc_steps.back();  // TODO make heading length variable?
 	vector<double> hr = getXY(heading_s, end_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);  // heading reference
 	points_x.push_back(hr[0]);
 	points_y.push_back(hr[1]);
@@ -300,7 +318,7 @@ vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car
 
 	std::cout << "Starting theta: " << start_theta << ", target theta: " << target_theta << std::endl;
 
-	vector<vector<double>> result = splineTrajectoryFromPoints(start_theta, points_x, points_y);
+	vector<vector<double>> result = splineTrajectoryFromPoints(start_theta, points_x, points_y, dist_inc_steps);
 
 	return result;
 }
@@ -348,10 +366,11 @@ int main() {
 
   // target velocity
   // speed limit is 50mph
-  double ref_vel = 49.5;  // mph
+  double ref_vel = 49.2;  // mph
+  double speed_reduction_checks = 0.15; // percentage
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy,
-					  &lane,&targetLane,&ref_vel]
+					  &lane, &targetLane, &ref_vel, &speed_reduction_checks]
 					  (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
@@ -416,7 +435,6 @@ int main() {
 				targetLanes.push_back(targetLane);
 			// if path already lengthy enough, only use previous path
 			} else if (previous_path_x.size() >= 20) {
-				std::cout << "Path size over minimum (" << previous_path_x.size() << "), waiting..." << std::endl;
 				trajectories_next_x_vals.push_back(previous_path_x);
 				trajectories_next_y_vals.push_back(previous_path_y);
 				minIdx = 0;
@@ -424,49 +442,56 @@ int main() {
 			} else {
 				std::cout << "generating trajectories..." << std::endl;
 				// generate up to 3 paths and compare costs: Left, Keep lane, Right
-				std::cout << "Keep lane trajectory..." << std::endl;
-				vector<vector<double>> klTrajec = getTrajectory(lane, dist_inc,
-																car_s, car_yaw, car_x, car_y, car_speed,
-																map_waypoints_x,
-																map_waypoints_y, map_waypoints_s);
-				// append to trajectories
-				trajectories_next_x_vals.push_back(klTrajec[0]);
-				trajectories_next_y_vals.push_back(klTrajec[1]);
+				for (int i = 0; i < 3; ++i) {
+					std::cout << std::endl << "Keep lane trajectory " << i << "..." << std::endl;
+					vector<vector<double>> klTrajec = getTrajectory(lane, (1.0 - i*speed_reduction_checks) * dist_inc,
+																	car_s, car_yaw, car_x, car_y, car_speed,
+																	map_waypoints_x,
+																	map_waypoints_y, map_waypoints_s);
+					// append to trajectories
+					trajectories_next_x_vals.push_back(klTrajec[0]);
+					trajectories_next_y_vals.push_back(klTrajec[1]);
 
-				targetLanes.push_back(lane);
+					targetLanes.push_back(lane);
+				}
 
 				if (lane > 0) { // go left if possible
-					std::cout << "Go left trajectory..." << std::endl;
-					vector<vector<double>> lTrajec = getTrajectory(lane - 1, dist_inc,
-																   car_s, car_yaw, car_x, car_y, car_speed,
-																   map_waypoints_x,
-																   map_waypoints_y, map_waypoints_s);
-					// append to trajectories
-					trajectories_next_x_vals.push_back(lTrajec[0]);
-					trajectories_next_y_vals.push_back(lTrajec[1]);
+					for (int i = 0; i < 3; ++i) {
+						std::cout << std::endl << "Go left trajectory " << i << "..." << std::endl;
+						vector<vector<double>> lTrajec = getTrajectory(lane - 1, (1.0 - i*speed_reduction_checks) * dist_inc,
+																	   car_s, car_yaw, car_x, car_y, car_speed,
+																	   map_waypoints_x,
+																	   map_waypoints_y, map_waypoints_s);
+						// append to trajectories
+						trajectories_next_x_vals.push_back(lTrajec[0]);
+						trajectories_next_y_vals.push_back(lTrajec[1]);
 
-					targetLanes.push_back(lane - 1);
+						targetLanes.push_back(lane - 1);
+					}
 				}
 
 				if (lane < 2) { // go right if possible
-					std::cout << "Go right trajectory..." << std::endl;
-					vector<vector<double>> rTrajec = getTrajectory(lane + 1, dist_inc,
-																   car_s, car_yaw, car_x, car_y, car_speed,
-																   map_waypoints_x,
-																   map_waypoints_y, map_waypoints_s);
-					// append to trajectories
-					trajectories_next_x_vals.push_back(rTrajec[0]);
-					trajectories_next_y_vals.push_back(rTrajec[1]);
+					for (int i = 0; i < 3; ++i) {
+						std::cout << std::endl << "Go right trajectory " << i << "..." << std::endl;
+						vector<vector<double>> rTrajec = getTrajectory(lane + 1, (1.0 - i*speed_reduction_checks) * dist_inc,
+																	   car_s, car_yaw, car_x, car_y, car_speed,
+																	   map_waypoints_x,
+																	   map_waypoints_y, map_waypoints_s);
+						// append to trajectories
+						trajectories_next_x_vals.push_back(rTrajec[0]);
+						trajectories_next_y_vals.push_back(rTrajec[1]);
 
-					targetLanes.push_back(lane + 1);
+						targetLanes.push_back(lane + 1);
+					}
 				}
 
 				// calculate costs
 				vector<double> costs;
 
 				for (int i = 0; i < trajectories_next_x_vals.size(); ++i) {
-					double cost = calculateCost(car_d, car_s, car_x, car_y, car_yaw, trajectories_next_x_vals[i],
-												trajectories_next_y_vals[i], sensor_fusion);
+					double cost = calculateCost(targetLanes[i], car_s, car_d, car_x, car_y, car_yaw,
+												trajectories_next_x_vals[i], trajectories_next_y_vals[i],
+												sensor_fusion);
 					costs.push_back(cost);
 				}
 
@@ -487,11 +512,8 @@ int main() {
 			// set target lane to targetLane of picked trajectory
 			targetLane = targetLanes[minIdx];
 
-            std::cout << "Sending: lane: " << lane << ", target lane: " << targetLane
-					  << ", path length: " << trajectories_next_x_vals[minIdx].size() << "...";
           	msgJson["next_x"] = trajectories_next_x_vals[minIdx];
           	msgJson["next_y"] = trajectories_next_y_vals[minIdx];
-            std::cout << "Message sent!" << std::endl;
           	auto msg = "42[\"control\","+ msgJson.dump()+"]";
 
           	//this_thread::sleep_for(chrono::milliseconds(1000));
