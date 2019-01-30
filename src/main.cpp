@@ -235,8 +235,9 @@ vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car
 									 vector<double> map_waypoints_s) {
 	// calculate target dist_inc
 	// max acc = 10 m/s/s ~ 0.2 m/s/step ~ 0.004 m/step/step
+	double max_acc_margin = 0.95;  // to prevent small derivations from exceeding the maximu
 	double car_speed_step = mph2mstep(car_speed);
-	double max_speed_step = min(dist_inc, car_speed_step + 50 * 0.004);
+	double max_speed_step = min(dist_inc, car_speed_step + 50 * 0.004 * max_acc_margin);
 
 	vector<double> dist_inc_steps(50);
 	// linearly increase speed from car_speed to max speed
@@ -409,13 +410,11 @@ int main() {
                 trajectories_next_x_vals.push_back(previous_path_x);
                 trajectories_next_y_vals.push_back(previous_path_y);
 				minIdx = 0;
-				targetLanes.push_back(targetLane);
 			// if path already lengthy enough, only use previous path
 			} else if (previous_path_x.size() >= 20) {
 				trajectories_next_x_vals.push_back(previous_path_x);
 				trajectories_next_y_vals.push_back(previous_path_y);
 				minIdx = 0;
-				targetLanes.push_back(targetLane);
 			} else {
 				std::cout << "generating trajectories from lane " << lane << "..." << std::endl;
 				// generate up to 3 paths and compare costs: Left, Keep lane, Right
@@ -476,13 +475,11 @@ int main() {
 						minIdx = i;
 					}
 				}
-
 				std::cout << "Min cost: " << minCost << " at: " << minIdx << std::endl;
 
+				// set target lane to targetLane of picked trajectory
+				targetLane = targetLanes[minIdx];
 			}
-
-			// set target lane to targetLane of picked trajectory
-			targetLane = targetLanes[minIdx];
 
           	msgJson["next_x"] = trajectories_next_x_vals[minIdx];
           	msgJson["next_y"] = trajectories_next_y_vals[minIdx];
