@@ -205,7 +205,7 @@ vector<vector<double>> splineTrajectoryFromPoints(double car_theta, int startIdx
 	double startY = Y[startIdx];
 	double incX = 0;  // the increment, based on step sizes in dist_inc_steps
 
-	for (int i = 0; i < trajecL; ++i) {  // TODO trajec length variable
+	for (int i = 0; i < trajecL; ++i) {
 		incX += dist_inc_steps[i];
 		double tmpX = startX + incX;
 		double tmpY = s(tmpX);
@@ -262,7 +262,6 @@ vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car
 	//   N previous_path points
 	//
 	// and:
-	//   halfway point
 	//   end point
 	//   end point in future
 	vector<double> points_x;
@@ -292,7 +291,7 @@ vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car
 	}
 
 
-	// halfway and endpoint
+	// endpoint
 	vector<double> end_sd = getFrenet(points_x.back(), points_y.back(), start_theta, map_waypoints_x, map_waypoints_y);
 	double end_s = end_sd[0];
 	for (int i = 0; i < trajecL; ++i) {
@@ -300,10 +299,6 @@ vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car
 	}
 	double end_d = 4 * targetLane + 2;
 	vector<double> end_point = getXY(end_s, end_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-
-	// halfway
-	points_x.push_back((car_x + end_point[0]) / 2);
-	points_y.push_back((car_y + end_point[1]) / 2);
 
 	// push end point
 	points_x.push_back(end_point[0]);
