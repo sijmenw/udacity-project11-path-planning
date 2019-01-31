@@ -345,10 +345,11 @@ int main() {
   // target velocity
   // speed limit is 50mph
   double ref_vel = 49.2;  // mph
+  double switch_slow = 0.95; // percentage of speed when doing a lane switch
   double speed_reduction_checks = 0.15; // percentage
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy,
-					  &lane, &targetLane, &ref_vel, &speed_reduction_checks]
+					  &lane, &targetLane, &ref_vel, &speed_reduction_checks, &switch_slow]
 					  (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
@@ -432,7 +433,8 @@ int main() {
 
 				if (lane > 0) { // go left if possible
 					for (int i = 0; i < 3; ++i) {
-						vector<vector<double>> lTrajec = getTrajectory(lane - 1, (1.0 - i*speed_reduction_checks) * dist_inc,
+						vector<vector<double>> lTrajec = getTrajectory(lane - 1,
+																	   switch_slow * (1.0 - i*speed_reduction_checks) * dist_inc,
 																	   car_s, car_yaw, car_x, car_y, car_speed,
 																	   map_waypoints_x,
 																	   map_waypoints_y, map_waypoints_s);
@@ -446,7 +448,8 @@ int main() {
 
 				if (lane < 2) { // go right if possible
 					for (int i = 0; i < 3; ++i) {
-						vector<vector<double>> rTrajec = getTrajectory(lane + 1, (1.0 - i*speed_reduction_checks) * dist_inc,
+						vector<vector<double>> rTrajec = getTrajectory(lane + 1,
+																	   switch_slow * (1.0 - i*speed_reduction_checks) * dist_inc,
 																	   car_s, car_yaw, car_x, car_y, car_speed,
 																	   map_waypoints_x,
 																	   map_waypoints_y, map_waypoints_s);

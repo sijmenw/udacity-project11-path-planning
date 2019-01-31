@@ -41,7 +41,7 @@ double calculateCost(int targetLane, double car_s, double car_d, double car_x, d
             if (targetLane == calculateLane(other_vehicles[vIdx][6])) {
                 double dist = distance(path_x[i], path_y[i], other_vehicles[vIdx][1], other_vehicles[vIdx][2]);
                 if (dist < 10) {
-                    if (dist < 3) {
+                    if (dist < 5.0) {  // one lane width is 4, so should detect cars beside it
                         closeCost += veryClosePenalty;
                     } else {
                         closeCost += closePenalty;
