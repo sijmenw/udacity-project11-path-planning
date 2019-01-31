@@ -31,10 +31,10 @@ double calculateCost(int targetLane, double car_s, double car_d, double car_x, d
                      vector<vector<double>> other_vehicles) {
     // The data format for each car is: [ id, x, y, vx, vy, s, d]
     double collisionW = 100.0;
-    double veryCloseW = 4.0;  // per step
+    double veryCloseW = 5.0;  // per step
     double closeW = 0.4;  // per step
-    double slowW = 1.5;
-    double laneSwitchW = 6.0;
+    double slowW = 1.0;
+    double laneSwitchW = 4.0;
 
     // punish switching to lane with car
     double collisionCost = 0.0;
