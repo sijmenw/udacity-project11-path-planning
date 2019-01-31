@@ -250,8 +250,8 @@ vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car
 	// linearly increase speed from car_speed to max speed
 	for (int i = 0; i < trajecL; ++i) {
 		// i + 1 so speed increases from first step
-		// times 0.02 because acceleration calculated per step
-		dist_inc_steps[i] = car_speed_step + (i+1) * (max_speed_step - car_speed_step) * 0.02;
+		// divided by trajecL because acceleration calculated per step
+		dist_inc_steps[i] = car_speed_step + (i+1) * (max_speed_step - car_speed_step) / float(trajecL);
 	}
 
 	// build point vectors for spline
@@ -358,12 +358,12 @@ int main() {
 
   // target velocity
   // speed limit is 50mph
-  double ref_vel = 47.5;  // mph
+  double ref_vel = 49;  // mph
   double switch_slow = 0.95; // percentage of speed when doing a lane switch
   double speed_reduction_checks = 0.15; // percentage
 
-  int trajecL = 70;
-  int trajecMin = 20;
+  int trajecL = 75;
+  int trajecMin = 60;
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy,
 					  &lane, &targetLane, &ref_vel, &speed_reduction_checks, &switch_slow, &trajecL, &trajecMin]
@@ -409,7 +409,14 @@ int main() {
 			double dist_inc = mph2mstep(ref_vel);
 			double car_yaw = deg2rad(car_yaw_deg);
 
+			int prevLane = lane;
 			lane = calculateLane(car_d);
+			bool justSwitched;
+			if (lane == -1 || prevLane != lane) {
+			    justSwitched = TRUE;
+			} else {
+			    justSwitched = FALSE;
+			}
 
 			// vectors to hold the trajectories
 			vector<vector<double>> trajectories_next_x_vals;
@@ -424,22 +431,18 @@ int main() {
 			double minCost = 999999999;
 			double minIdx;
 
-			// if target lane is not current lane, only use previous path
-			if (lane != targetLane) {
-				std::cout << "Moving to a different lane..." << std::endl;
-                trajectories_next_x_vals.push_back(previous_path_x);
-                trajectories_next_y_vals.push_back(previous_path_y);
-				minIdx = 0;
-			// if path already lengthy enough, only use previous path
-			} else if (previous_path_x.size() >= trajecMin) {
+            // if path already lengthy enough, only use previous path
+			if (previous_path_x.size() >= trajecMin) {
 				trajectories_next_x_vals.push_back(previous_path_x);
 				trajectories_next_y_vals.push_back(previous_path_y);
 				minIdx = 0;
 			} else {
-				std::cout << "generating trajectories from lane " << lane << "..." << std::endl;
+				std::cout << "generating trajectories from lane " << lane
+                          << " (current target: " << targetLane << ")" << std::endl;
 				// generate up to 3 paths and compare costs: Left, Keep lane, Right
 				for (int i = 0; i < 3; ++i) {
-					vector<vector<double>> klTrajec = getTrajectory(lane, (1.0 - i*speed_reduction_checks) * dist_inc,
+					vector<vector<double>> klTrajec = getTrajectory(targetLane,
+                                                                    (1.0 - i*speed_reduction_checks) * dist_inc,
 																	car_s, car_yaw, car_x, car_y, car_speed,
 																	previous_path_x, previous_path_y,
 																	map_waypoints_x,
@@ -449,42 +452,53 @@ int main() {
 					trajectories_next_x_vals.push_back(klTrajec[0]);
 					trajectories_next_y_vals.push_back(klTrajec[1]);
 
-					targetLanes.push_back(lane);
+					targetLanes.push_back(targetLane);
 				}
 
-				if (lane > 0) { // go left if possible
-					for (int i = 0; i < 3; ++i) {
-						vector<vector<double>> lTrajec = getTrajectory(lane - 1,
-																	   switch_slow * (1.0 - i*speed_reduction_checks) * dist_inc,
-																	   car_s, car_yaw, car_x, car_y, car_speed,
-																	   previous_path_x, previous_path_y,
-																	   map_waypoints_x,
-																	   map_waypoints_y, map_waypoints_s,
-																	   trajecL);
-						// append to trajectories
-						trajectories_next_x_vals.push_back(lTrajec[0]);
-						trajectories_next_y_vals.push_back(lTrajec[1]);
-
-						targetLanes.push_back(lane - 1);
-					}
+                // only consider lane switching if not already switching
+                // allow one iteration for stabilizing
+                if (lane == targetLane && justSwitched) {
+				    std::cout << "Stabilizing, keeping lane!" << std::endl;
 				}
+                if (lane == targetLane && !justSwitched) {
+                    if (lane > 0) { // go left if possible
+                        for (int i = 0; i < 3; ++i) {
+                            vector<vector<double>> lTrajec = getTrajectory(lane - 1,
+                                                                           switch_slow *
+                                                                           (1.0 - i * speed_reduction_checks) *
+                                                                           dist_inc,
+                                                                           car_s, car_yaw, car_x, car_y, car_speed,
+                                                                           previous_path_x, previous_path_y,
+                                                                           map_waypoints_x,
+                                                                           map_waypoints_y, map_waypoints_s,
+                                                                           trajecL);
+                            // append to trajectories
+                            trajectories_next_x_vals.push_back(lTrajec[0]);
+                            trajectories_next_y_vals.push_back(lTrajec[1]);
 
-				if (lane < 2) { // go right if possible
-					for (int i = 0; i < 3; ++i) {
-						vector<vector<double>> rTrajec = getTrajectory(lane + 1,
-																	   switch_slow * (1.0 - i*speed_reduction_checks) * dist_inc,
-																	   car_s, car_yaw, car_x, car_y, car_speed,
-																	   previous_path_x, previous_path_y,
-																	   map_waypoints_x,
-																	   map_waypoints_y, map_waypoints_s,
-																	   trajecL);
-						// append to trajectories
-						trajectories_next_x_vals.push_back(rTrajec[0]);
-						trajectories_next_y_vals.push_back(rTrajec[1]);
+                            targetLanes.push_back(lane - 1);
+                        }
+                    }
 
-						targetLanes.push_back(lane + 1);
-					}
-				}
+                    if (lane < 2) { // go right if possible
+                        for (int i = 0; i < 3; ++i) {
+                            vector<vector<double>> rTrajec = getTrajectory(lane + 1,
+                                                                           switch_slow *
+                                                                           (1.0 - i * speed_reduction_checks) *
+                                                                           dist_inc,
+                                                                           car_s, car_yaw, car_x, car_y, car_speed,
+                                                                           previous_path_x, previous_path_y,
+                                                                           map_waypoints_x,
+                                                                           map_waypoints_y, map_waypoints_s,
+                                                                           trajecL);
+                            // append to trajectories
+                            trajectories_next_x_vals.push_back(rTrajec[0]);
+                            trajectories_next_y_vals.push_back(rTrajec[1]);
+
+                            targetLanes.push_back(lane + 1);
+                        }
+                    }
+                }
 
 				// calculate costs
 				vector<double> costs;
