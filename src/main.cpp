@@ -173,21 +173,25 @@ vector<double> carCoordinate(double carX, double carY, double carTheta,
 	return result;
 }
 
-vector<vector<double>> splineTrajectoryFromPoints(double car_theta, vector<double> worldX, vector<double> worldY,
+vector<vector<double>> splineTrajectoryFromPoints(double car_theta, int startIdx, vector<double> worldX, vector<double> worldY,
 												  vector<double> dist_inc_steps) {
+	/*
+	 * startIdx is the idx of coordinate considered to be the start of the trajectory i.e. 'the car'
+	 */
 	vector<vector<double>> result(2);
+	int trajecL = dist_inc_steps.size();
 
 	// transform XY points to car coordinates
 	// worldX[1],worldY[1] are car X,Y
-	vector<double> X(5);
-	vector<double> Y(5);
+	vector<double> X;
+	vector<double> Y;
 
 	for (int i = 0; i < worldX.size(); ++i) {
 		// world to car coordinate
-		vector<double> rel = carCoordinate(worldX[1], worldY[1], car_theta,
+		vector<double> rel = carCoordinate(worldX[startIdx], worldY[startIdx], car_theta,
 										   worldX[i], worldY[i]);
-		X[i] = rel[0];
-		Y[i] = rel[1];
+		X.push_back(rel[0]);
+		Y.push_back(rel[1]);
 	}
 
 	tk::spline s;
@@ -197,11 +201,11 @@ vector<vector<double>> splineTrajectoryFromPoints(double car_theta, vector<doubl
 	vector<double> car_points_x;
 	vector<double> car_points_y;
 
-	double startX = X[1];
-	double startY = Y[1];
+	double startX = X[startIdx];
+	double startY = Y[startIdx];
 	double incX = 0;  // the increment, based on step sizes in dist_inc_steps
 
-	for (int i = 0; i < 50; ++i) {  // TODO trajec length variable
+	for (int i = 0; i < trajecL; ++i) {  // TODO trajec length variable
 		incX += dist_inc_steps[i];
 		double tmpX = startX + incX;
 		double tmpY = s(tmpX);
@@ -213,7 +217,7 @@ vector<vector<double>> splineTrajectoryFromPoints(double car_theta, vector<doubl
 	// using carCoordinate function, where car is now world origin in car coordinate system
 	vector<double> world_points_x;
 	vector<double> world_points_y;
-	vector<double> worldOriginFromCar = carCoordinate(worldX[1], worldY[1], car_theta, 0, 0);
+	vector<double> worldOriginFromCar = carCoordinate(worldX[startIdx], worldY[startIdx], car_theta, 0, 0);
 
 	for (int i = 0; i < car_points_x.size(); ++i) {
 		vector<double> tmp = carCoordinate(worldOriginFromCar[0], worldOriginFromCar[1], -car_theta,
@@ -230,18 +234,21 @@ vector<vector<double>> splineTrajectoryFromPoints(double car_theta, vector<doubl
 
 vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car_s, double start_theta,
 									 double car_x, double car_y, double car_speed,
+									 vector<double> previous_path_x,
+									 vector<double> previous_path_y,
 									 vector<double> map_waypoints_x,
 									 vector<double> map_waypoints_y,
-									 vector<double> map_waypoints_s) {
+									 vector<double> map_waypoints_s,
+									 int trajecL) {
 	// calculate target dist_inc
 	// max acc = 10 m/s/s ~ 0.2 m/s/step ~ 0.004 m/step/step
-	double max_acc_margin = 0.95;  // to prevent small derivations from exceeding the maximu
+	double max_acc_margin = 0.95;  // to prevent small derivations from exceeding the maximum
 	double car_speed_step = mph2mstep(car_speed);
-	double max_speed_step = min(dist_inc, car_speed_step + 50 * 0.004 * max_acc_margin);
+	double max_speed_step = min(dist_inc, car_speed_step + trajecL * 0.004 * max_acc_margin);
 
-	vector<double> dist_inc_steps(50);
+	vector<double> dist_inc_steps(trajecL);
 	// linearly increase speed from car_speed to max speed
-	for (int i = 0; i < 50; ++i) {
+	for (int i = 0; i < trajecL; ++i) {
 		// i + 1 so speed increases from first step
 		// times 0.02 because acceleration calculated per step
 		dist_inc_steps[i] = car_speed_step + (i+1) * (max_speed_step - car_speed_step) * 0.02;
@@ -251,26 +258,45 @@ vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car
 	// points are:
 	//   starting point in past using car heading
 	//   starting point
+	// or:
+	//   N previous_path points
+	//
+	// and:
 	//   halfway point
 	//   end point
 	//   end point in future
 	vector<double> points_x;
 	vector<double> points_y;
+	int buildIdx; // the point considered as the start of the trajectory
 
-	// point in past using heading
-	double x0 = car_x - cos(start_theta) * 10 * dist_inc;
-	double y0 = car_y - sin(start_theta) * 10 * dist_inc;
-	points_x.push_back(x0);
-	points_y.push_back(y0);
+	if (previous_path_x.size() < 1) {
+		// point in past using heading
+		double x0 = car_x - cos(start_theta) * 10 * dist_inc;
+		double y0 = car_y - sin(start_theta) * 10 * dist_inc;
+		points_x.push_back(x0);
+		points_y.push_back(y0);
 
-	// starting point
-	points_x.push_back(car_x);
-	points_y.push_back(car_y);
+		// starting point
+		points_x.push_back(car_x);
+		points_y.push_back(car_y);
+		buildIdx = 1;
+	} else {
+		// assumes previous path is never shorter than 5
+		int useNPoints = 5;
+		for (int i = 0; i < useNPoints; ++i) {
+			points_x.push_back(previous_path_x[i]);
+			points_y.push_back(previous_path_y[i]);
+		}
+
+		buildIdx = useNPoints - 1;
+	}
+
 
 	// halfway and endpoint
-	double end_s = car_s;
-	for (int i = 0; i < 50; ++i) {
-		end_s += dist_inc_steps[i];  // TODO make trajectory length variable?
+	vector<double> end_sd = getFrenet(points_x.back(), points_y.back(), start_theta, map_waypoints_x, map_waypoints_y);
+	double end_s = end_sd[0];
+	for (int i = 0; i < trajecL; ++i) {
+		end_s += dist_inc_steps[i];
 	}
 	double end_d = 4 * targetLane + 2;
 	vector<double> end_point = getXY(end_s, end_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
@@ -289,14 +315,7 @@ vector<vector<double>> getTrajectory(int targetLane, double dist_inc, double car
 	points_x.push_back(hr[0]);
 	points_y.push_back(hr[1]);
 
-	// set target values
-	double target_x = end_point[0];
-	double target_y = end_point[1];
-
-	// theta is zero at east, goes up rotating counter clockwise
-	double target_theta = atan2(hr[1] - target_y, hr[0] - target_x);
-
-	vector<vector<double>> result = splineTrajectoryFromPoints(start_theta, points_x, points_y, dist_inc_steps);
+	vector<vector<double>> result = splineTrajectoryFromPoints(start_theta, buildIdx, points_x, points_y, dist_inc_steps);
 
 	return result;
 }
@@ -344,12 +363,15 @@ int main() {
 
   // target velocity
   // speed limit is 50mph
-  double ref_vel = 49.2;  // mph
+  double ref_vel = 47.5;  // mph
   double switch_slow = 0.95; // percentage of speed when doing a lane switch
   double speed_reduction_checks = 0.15; // percentage
 
+  int trajecL = 70;
+  int trajecMin = 20;
+
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy,
-					  &lane, &targetLane, &ref_vel, &speed_reduction_checks, &switch_slow]
+					  &lane, &targetLane, &ref_vel, &speed_reduction_checks, &switch_slow, &trajecL, &trajecMin]
 					  (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
@@ -397,6 +419,8 @@ int main() {
 			// vectors to hold the trajectories
 			vector<vector<double>> trajectories_next_x_vals;
 			vector<vector<double>> trajectories_next_y_vals;
+			vector<double> resultX;
+			vector<double> resultY;
 
 			// vector that hold the target lanes for the generated trajectories
 			vector<int> targetLanes;
@@ -412,7 +436,7 @@ int main() {
                 trajectories_next_y_vals.push_back(previous_path_y);
 				minIdx = 0;
 			// if path already lengthy enough, only use previous path
-			} else if (previous_path_x.size() >= 20) {
+			} else if (previous_path_x.size() >= trajecMin) {
 				trajectories_next_x_vals.push_back(previous_path_x);
 				trajectories_next_y_vals.push_back(previous_path_y);
 				minIdx = 0;
@@ -422,8 +446,10 @@ int main() {
 				for (int i = 0; i < 3; ++i) {
 					vector<vector<double>> klTrajec = getTrajectory(lane, (1.0 - i*speed_reduction_checks) * dist_inc,
 																	car_s, car_yaw, car_x, car_y, car_speed,
+																	previous_path_x, previous_path_y,
 																	map_waypoints_x,
-																	map_waypoints_y, map_waypoints_s);
+																	map_waypoints_y, map_waypoints_s,
+																	trajecL);
 					// append to trajectories
 					trajectories_next_x_vals.push_back(klTrajec[0]);
 					trajectories_next_y_vals.push_back(klTrajec[1]);
@@ -436,8 +462,10 @@ int main() {
 						vector<vector<double>> lTrajec = getTrajectory(lane - 1,
 																	   switch_slow * (1.0 - i*speed_reduction_checks) * dist_inc,
 																	   car_s, car_yaw, car_x, car_y, car_speed,
+																	   previous_path_x, previous_path_y,
 																	   map_waypoints_x,
-																	   map_waypoints_y, map_waypoints_s);
+																	   map_waypoints_y, map_waypoints_s,
+																	   trajecL);
 						// append to trajectories
 						trajectories_next_x_vals.push_back(lTrajec[0]);
 						trajectories_next_y_vals.push_back(lTrajec[1]);
@@ -451,8 +479,10 @@ int main() {
 						vector<vector<double>> rTrajec = getTrajectory(lane + 1,
 																	   switch_slow * (1.0 - i*speed_reduction_checks) * dist_inc,
 																	   car_s, car_yaw, car_x, car_y, car_speed,
+																	   previous_path_x, previous_path_y,
 																	   map_waypoints_x,
-																	   map_waypoints_y, map_waypoints_s);
+																	   map_waypoints_y, map_waypoints_s,
+																	   trajecL);
 						// append to trajectories
 						trajectories_next_x_vals.push_back(rTrajec[0]);
 						trajectories_next_y_vals.push_back(rTrajec[1]);
@@ -482,10 +512,25 @@ int main() {
 
 				// set target lane to targetLane of picked trajectory
 				targetLane = targetLanes[minIdx];
+
+				// start build result trajectory
+				if (previous_path_x.size() > 0) {
+					for (int i = 0; i < 5; ++i) {
+						resultX.push_back(previous_path_x[i]);
+						resultY.push_back(previous_path_y[i]);
+					}
+				}
+
 			}
 
-          	msgJson["next_x"] = trajectories_next_x_vals[minIdx];
-          	msgJson["next_y"] = trajectories_next_y_vals[minIdx];
+			// push calculated trajectory onto result trajectory
+			for (int i = 0; i < trajectories_next_x_vals[minIdx].size(); ++i) {
+				resultX.push_back(trajectories_next_x_vals[minIdx][i]);
+				resultY.push_back(trajectories_next_y_vals[minIdx][i]);
+			}
+
+          	msgJson["next_x"] = resultX;
+          	msgJson["next_y"] = resultY;
           	auto msg = "42[\"control\","+ msgJson.dump()+"]";
 
           	//this_thread::sleep_for(chrono::milliseconds(1000));
