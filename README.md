@@ -12,8 +12,11 @@ Each of the sections will be described below.
 
 #1. 
 Trajectory generation and following steps is only started if:
- - current remaining path is too short (<20)
- - not currently switching lanes (if a lane switch is started, it must be completed)
+ - current remaining path is too short (main.cpp:366 trajecMin (60)).
+ - not currently switching lanes or stabilizing (if a lane switch is started, it must be completed).
+ The car is considered to be stabilizing for one iteration after arriving in the target lane.
+
+Check for stabilizing can be found in main.cpp:412-419.
 
 #2.
 The trajectories are generated according to three possible decisions:
@@ -27,25 +30,33 @@ For each decision, three trajectories are generated, one at 100% speed, one at 8
 The speed that is referred to here is the maximum attainable speed, meaning without breaking the speed limit or the 
 maximum acceleration parameters.
 
+A margin is used to prevent small derivation from exceeding the threshold for acceleration or jerk.
+
+The calculations for step sizes can be found in main.cpp:243-255.
+
 For each trajectory the following steps are performed:
     
     Firstly, step sizes are determined. Speed is calculated to increase or decrease linearly to target speed over the trajectory.
     Step sized are stored.
     
-    5 points are calculated to later determine the trajectory.
+    4 points are calculated to later determine the trajectory when no previous path exists.
      1. point in the 'past', using the heading and speed of the car, a point is calculated in the past using linear extrapolation
      2. current position of the car
-     3. half-way point to target point
-     4. target point, using sum of speed step sizes calculated earlier, added along the s coordinate of the car, and the d value of the 
+     3. target point, using sum of speed step sizes calculated earlier, added along the s coordinate of the car, and the d value of the 
      center of the target lane. Then converted back to XY (world) coordinates.
-     5. point in the future, using using s coordinate in the lane and speed of latest calculated speed step to
+     4. point in the future, using using s coordinate in the lane and speed of latest calculated speed step to
       calculate location 10 time steps after target point.
     
-    These 5 points are converted to Car Coordinates and used to generate a spline.
+    When a previous path exists, the first 5 points from the previous path are taken instead of step 1 and 2.
+    The 'current' position of the car in this case is set to be the tail of these previous path values.
+    
+    These points are converted to Car Coordinates and used to generate a spline.
     
     Using linear approximation and the calculated step sizes, XY (car) points on the spline are calculated.
     
     These points are then converted back to XY (world) coordinates.
+    
+    When a previous path was used, it is also the beginning of the new trajectory.
 
 #3.
 When the trajectories (max 9) are generated, the costs for each of them is calculated.
@@ -56,6 +67,8 @@ Penalties are assigned for:
  - switching lanes
 
 By tuning the values associated with these costs, different driving behaviours can be attained.
+
+The cost calculation function can be found in helper.h:29.
 
 #4.
 The trajectory with the lowest cost is selected and sent to the simulator.
