@@ -61,6 +61,7 @@ For each trajectory the following steps are performed:
 #3.
 When the trajectories (max 9) are generated, the costs for each of them is calculated.
 Penalties are assigned for:
+ - attempting to switch lanes towards vehicle
  - driving close to vehicles
  - driving very close to vehicles
  - driving slow

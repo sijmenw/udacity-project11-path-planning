@@ -30,21 +30,35 @@ double calculateCost(int targetLane, double car_s, double car_d, double car_x, d
                      vector<double> path_x, vector<double> path_y,
                      vector<vector<double>> other_vehicles) {
     // The data format for each car is: [ id, x, y, vx, vy, s, d]
+    double collisionW = 100.0;
+    double veryCloseW = 4.0;  // per step
+    double closeW = 0.4;  // per step
+    double slowW = 1.5;
+    double laneSwitchW = 6.0;
 
-    double closeCost = 0.0;
-    double closePenalty = 0.5;
-    double veryClosePenalty = 5.0;
+    // punish switching to lane with car
+    double collisionCost = 0.0;
+    for (int vIdx = 0; vIdx < other_vehicles.size(); ++vIdx) {
+        if (targetLane == calculateLane(other_vehicles[vIdx][6])) {
+            double dist = distance(car_x, car_y, other_vehicles[vIdx][1], other_vehicles[vIdx][2]);
+            if (dist < 6.5) {
+                collisionCost += 100;
+            }
+        }
+    }
 
     // punish driving near other vehicles
+    double closeCost = 0.0;
+    double veryCloseCost = 0.0;
     for (int i = 0; i < path_x.size(); ++i) {
         for (int vIdx = 0; vIdx < other_vehicles.size(); ++vIdx) {
             if (targetLane == calculateLane(other_vehicles[vIdx][6])) {
                 double dist = distance(path_x[i], path_y[i], other_vehicles[vIdx][1], other_vehicles[vIdx][2]);
                 if (dist < 10) {
                     if (dist < 5.0) {  // one lane width is 4, so should detect cars beside it
-                        closeCost += veryClosePenalty;
+                        veryCloseCost += 1;
                     } else {
-                        closeCost += closePenalty;
+                        closeCost += 1;
                     }
                 }
             }
@@ -55,7 +69,10 @@ double calculateCost(int targetLane, double car_s, double car_d, double car_x, d
     double slowCost = 100 - distance(car_x, car_y, path_x.back(), path_y.back());
 
     // punish lane switching
-    double laneSwitchCost = targetLane == calculateLane(car_d) ? 0.0 : 4.0;
+    double laneSwitchCost = targetLane == calculateLane(car_d) ? 0.0 : 1.0;
 
-    return closeCost + slowCost + laneSwitchCost;
+    return collisionW * collisionCost +
+           closeW * closeCost +
+           slowW * slowCost +
+           laneSwitchW * laneSwitchCost;
 }
