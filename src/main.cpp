@@ -413,9 +413,9 @@ int main() {
 			lane = calculateLane(car_d);
 			bool justSwitched;
 			if (lane == -1 || prevLane != lane) {
-			    justSwitched = TRUE;
+			    justSwitched = true;
 			} else {
-			    justSwitched = FALSE;
+			    justSwitched = false;
 			}
 
 			// vectors to hold the trajectories
